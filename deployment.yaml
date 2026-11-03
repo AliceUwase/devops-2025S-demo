@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: campus-notifier
+  labels:
+    app: campus-notifier
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: campus-notifier
+  template:
+    metadata:
+      labels:
+        app: campus-notifier
+    spec:
+      containers:
+        - name: campus-notifier
+          image: campus-notifier:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - python manage.py migrate && python manage.py runserver 0.0.0.0:8000
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20

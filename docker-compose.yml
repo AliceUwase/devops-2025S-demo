@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16                       # official Postgres image from Docker Hub (no Dockerfile needed)
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}            # on first start, Postgres creates this database...
+      POSTGRES_USER: ${POSTGRES_USER}        # ...and this user...
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} # ...with this password
+    volumes:
+      - pgdata:/var/lib/postgresql/data      # store the database files in a named volume, outside the container
+    healthcheck:                             # lets Compose know when Postgres is ready to accept connections
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .                                 # build the image from the Dockerfile in this folder
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    ports:
+      - "8000:8000"                          # your machine's port : container port
+    environment:
+      DB_ENGINE: postgres                    # switches settings.py from SQLite to Postgres
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: db                      # the service name works as a hostname on the Compose network
+      POSTGRES_PORT: "5432"
+    depends_on:
+      db:
+        condition: service_healthy           # wait until the healthcheck passes, not just until db starts
+
+volumes:
+  pgdata:                                    # declares the named volume used above
