@@ -1,0 +1,149 @@
+---
+# intro to know the servers
+- name: Gather facts from all servers
+  hosts: all
+  gather_facts: true
+  tasks: []
+
+ # PLAY 1 - Database server  
+
+- name: Set up the database server
+  hosts: db
+  become: true           
+
+  vars:
+    pg_version: "16"
+    db_name: campus
+    db_user: campus
+    db_password: pick-a-password       
+    # The app server's private IP 
+    app_private_ip: "{{ hostvars[groups['app'][0]].ansible_default_ipv4.address }}"
+
+  tasks:
+    # step:  sudo apt update && sudo apt install -y postgresql
+    - name: Install Postgres (plus helpers Ansible needs)
+      ansible.builtin.apt:
+        name:
+          - postgresql
+          - python3-psycopg2     
+          - acl                  
+        state: present
+        update_cache: true
+
+    # step:  sudo -u postgres psql -c "CREATE USER campus WITH PASSWORD '...';"
+    - name: Create the campus user
+      community.postgresql.postgresql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+      become_user: postgres
+
+    # step:  sudo -u postgres psql -c "CREATE DATABASE campus OWNER campus;"
+    - name: Create the campus database
+      community.postgresql.postgresql_db:
+        name: "{{ db_name }}"
+        owner: "{{ db_user }}"
+      become_user: postgres
+
+    # step:  nano postgresql.conf: #listen_addresses = 'localhost' -> listen_addresses = '*'
+    - name: Listen on the network, not just localhost
+      ansible.builtin.lineinfile:
+        path: "/etc/postgresql/{{ pg_version }}/main/postgresql.conf"
+        regexp: "^#?listen_addresses"
+        line: "listen_addresses = '*'"
+      notify: Restart Postgres
+
+    # step: echo "host campus campus APP_IP/32 scram-sha-256" | sudo tee -a pg_hba.conf
+    - name: Allow only the app server to connect 
+      community.postgresql.postgresql_pg_hba:
+        dest: "/etc/postgresql/{{ pg_version }}/main/pg_hba.conf"
+        contype: host
+        databases: "{{ db_name }}"
+        users: "{{ db_user }}"
+        source: "{{ app_private_ip }}/32"
+        method: scram-sha-256
+      notify: Restart Postgres
+
+  # step: sudo systemctl restart postgresql  (should only run if a file above changed)
+  handlers:
+    - name: Restart Postgres
+      ansible.builtin.service:
+        name: postgresql
+        state: restarted
+
+# PLAY 2 - App server   
+
+- name: Set up the app server
+  hosts: app
+  become: true
+
+  vars:
+    app_image: auwase/campus-event-notifier:v2    
+    app_port: 8000
+    db_name: campus
+    db_user: campus
+    db_password: pick-a-password
+    # The DB server's private IP 
+    db_private_ip: "{{ hostvars[groups['db'][0]].ansible_default_ipv4.address }}"
+
+  tasks:
+    # step: sudo apt update && sudo apt install -y docker.io
+    - name: Install Docker  
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - python3-docker
+        state: present
+        update_cache: true
+
+    - name: Make sure Docker is running and starts on boot
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    # step: sudo usermod -aG docker ubuntu
+    - name: Let the ubuntu user run docker without sudo
+      ansible.builtin.user:
+        name: ubuntu
+        groups: docker
+        append: true
+
+    #  step:docker pull ... && docker run -d --name campus-notifier -p 8000:8000 -e ...
+    - name: Run the Campus Event Notifier container
+      community.docker.docker_container:
+        name: campus-notifier
+        image: "{{ app_image }}"
+        state: started
+        restart_policy: unless-stopped
+        published_ports:
+          - "{{ app_port }}:8000"
+        env:
+          DB_ENGINE: postgres
+          POSTGRES_DB: "{{ db_name }}"
+          POSTGRES_USER: "{{ db_user }}"
+          POSTGRES_PASSWORD: "{{ db_password }}"
+          POSTGRES_HOST: "{{ db_private_ip }}"
+          POSTGRES_PORT: "5432"
+
+    # step: docker exec campus-notifier python manage.py migrate
+    - name: Create the database tables
+      community.docker.docker_container_exec:
+        container: campus-notifier
+        command: python manage.py migrate
+      register: migrate
+      changed_when: "'No migrations to apply' not in migrate.stdout"
+
+    # step:  curl http://localhost:8000/health/
+    - name: Confirm the app is healthy
+      ansible.builtin.uri:
+        url: "http://localhost:{{ app_port }}/health/"
+        return_content: true
+      register: health
+      until: health.status == 200
+      retries: 10
+      delay: 3
+
+    - name: Show the health response
+      ansible.builtin.debug:
+        msg: "{{ health.content }}"
+
