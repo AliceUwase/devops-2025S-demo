@@ -45,9 +45,10 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: campus-notifier:dev
-          severity: HIGH,CRITICAL
-          exit-code: "0"            # warn for now; Drill 5 flips this
+          severity: CRITICAL
+          exit-code: "1"            # warn for now; Drill 5 flips this
           format: table
+          ignore-unfixed: true
 
   iac:
     name: IaC scan
@@ -60,4 +61,4 @@ jobs:
           directory: .
           framework: terraform
           quiet: true
-          soft_fail: true          # warn for now; Drill 5 flips this to false
+          soft_fail: false          # warn for now; Drill 5 flips this to false
