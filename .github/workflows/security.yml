@@ -49,11 +49,11 @@ jobs:
           exit-code: "0"            # warn for now; Drill 5 flips this
           format: table
 
-    iac:
+  iac:
     name: IaC scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4 
       - name: Checkov
         uses: bridgecrewio/checkov-action@master
         with:
