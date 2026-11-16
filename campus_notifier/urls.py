@@ -29,4 +29,5 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include("events.urls")),  # Root path goes to events
     path("accounts/", include("django.contrib.auth.urls")),
+    path("", include("django_prometheus.urls")),
 ]

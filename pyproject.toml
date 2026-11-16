@@ -86,6 +86,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 "*/tests.py" = ["S101", "S106"]  # Use of assert, hardcoded passwords in tests
 "*/test_*.py" = ["S101", "S106"]
 "manage.py" = ["T201"]  # Allow print statements in management commands
+"seed_data.py" = ["E402", "T201"]
 
 [tool.ruff.lint.isort]
 # Use Django's isort profile
