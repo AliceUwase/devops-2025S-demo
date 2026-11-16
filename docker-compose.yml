@@ -19,6 +19,7 @@ services:
     ports:
       - "8000:8000"                          # your machine's port : container port
     environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       DB_ENGINE: postgres                    # switches settings.py from SQLite to Postgres
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -28,6 +29,51 @@ services:
     depends_on:
       db:
         condition: service_healthy           # wait until the healthcheck passes, not just until db starts
+
+  app:
+    build: .
+    volumes:
+      - .:/app
+    ports:
+      - "8001:8000"
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DB_ENGINE: postgres                        # without this, settings.py falls back to SQLite
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - default # needed t reach the db service
+      - monitoring    # needed so prometheus can scrap it
+  
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    driver: bridge 
+
 
 volumes:
   pgdata:                                    # declares the named volume used above
